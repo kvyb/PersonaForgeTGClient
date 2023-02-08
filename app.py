@@ -14,6 +14,10 @@ import websockets
 import logging
 import os
 import pyfiglet
+import hashids
+import asyncio
+import json
+import time
 
 from telegram import __version__ as TG_VER
 
@@ -124,14 +128,46 @@ async def skip_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     return BIO
 
+# TODO - Implement character create via http api. Limit to 1 available character.
 
 async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Stores the info about the user and ends the conversation."""
+
     user = update.message.from_user
     logger.info("Bio of %s: %s", user.first_name, update.message.text)
-    await update.message.reply_text("Thank you! I hope we can talk again some day.")
 
-    return ConversationHandler.END
+    async with websockets.connect('ws://34.118.23.184:7860/queue/join') as websocket:
+
+        # TODO implement hashids bound to user id. id -> hashid -> hashid2
+
+        response = await websocket.recv()
+        if response:
+            await websocket.send(json.dumps({
+                'session_hash':'1234esy4hb6q',
+                'fn_index':3
+            }))
+            time.sleep(3)
+            response = await websocket.recv()
+
+            print(response)
+            response = await websocket.recv()
+            print(response)
+            if response:
+                await websocket.send(json.dumps({
+                    "fn_index":3,
+                    "data":[None,None,update.message.text,None,"","","","","",""],
+                    "session_hash":"1234esy4hb6q"
+                }))
+                response = await websocket.recv()
+                print(response)
+                print(type(response))
+                if json.loads(response)['msg'] == 'process_starts':
+                    response = await websocket.recv()
+                    print("final: ",response)
+
+    await update.message.reply_text(response)
+    
+    return BIO
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
