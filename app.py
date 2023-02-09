@@ -14,12 +14,12 @@ import websockets
 import logging
 import os
 import pyfiglet
-import hashids
 import asyncio
 import json
 import time
 
 from telegram import __version__ as TG_VER
+from telegram.constants import ParseMode
 
 try:
     from telegram import __version_info__
@@ -48,85 +48,189 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-GENDER, PHOTO, LOCATION, BIO = range(4)
+# Global dict to store data in telegram session
+CharData = {}
 
+CHARCREATE, CHARNAME, YOUNAME, AIPERSONA, SCENARIO, BIO = range(6)
 
+# TODO set character info here:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Starts the conversation and asks the user about their gender."""
-    reply_keyboard = [["Boy", "Girl", "Other"]]
-
+    """Starts the conversation and asks the user what to do next"""
+    reply_keyboard = [["Create", "Other"]]
     await update.message.reply_text(
-        "Hi! My name is Professor Bot. I will hold a conversation with you. "
-        "Send /cancel to stop talking to me.\n\n"
-        "Are you a boy or a girl?",
+        "<strong>Overseer Loaded</strong>\n\n"
+        "Send  /cancel  to <u><strong>Stop</strong></u> Persona creation\n\n"
+        "Press the <strong>Create</strong> button to make a new AI Persona\n\n\n"
+        "Note:\n"
+        "   - Overseer will bind and retain the character until compute server restart.\n"
+        "   - Persona names cannot be shared between personas.\n"
+        "   - Overseer will remember your Personas by their names until compute server restart."
+        "   - You can reconnect to a Persona by 'creating' with the Persona name, leaving all Persona setup fields blank.",
         reply_markup=ReplyKeyboardMarkup(
-            reply_keyboard, one_time_keyboard=True, input_field_placeholder="Boy or Girl?"
-        ),
+            reply_keyboard, one_time_keyboard=True, input_field_placeholder="Create a Char"
+        ), parse_mode=ParseMode.HTML,
     )
+    return CHARCREATE
 
-    return GENDER
 
-
-async def gender(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Stores the selected gender and asks for a photo."""
+async def charcreate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Char Create mode"""
     user = update.message.from_user
-    logger.info("Gender of %s: %s", user.first_name, update.message.text)
-    await update.message.reply_text(
-        "I see! Please send me a photo of yourself, "
-        "so I know what you look like, or send /skip if you don't want to.",
-        reply_markup=ReplyKeyboardRemove(),
-    )
+    logger.info("Char CREATE mode: %s: %s", user.first_name, update.message.text)
 
-    return PHOTO
+    UserID = user['id']
+    CharData.update({UserID: []})
+
+    if update.message.text == "Create":
+        await update.message.reply_text(
+            "<strong>Overseer:</strong> Persona Creation / <i>Start</i>\n\n"
+            "Name your Persona.",
+            reply_markup=ReplyKeyboardRemove(), parse_mode=ParseMode.HTML,
+        )
+    return CHARNAME
 
 
-async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Stores the photo and asks for a location."""
+async def charname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """AI character name"""
     user = update.message.from_user
-    photo_file = await update.message.photo[-1].get_file()
-    await photo_file.download_to_drive("user_photo.jpg")
-    logger.info("Photo of %s: %s", user.first_name, "user_photo.jpg")
+
+    UserID = user['id']
+    CharData[UserID].append(update.message.text)
+
+    logger.info("Character name is: %s: %s", update.message.text, CharData)
+    
     await update.message.reply_text(
-        "Gorgeous! Now, send me your location please, or send /skip if you don't want to."
+        "What should the persona call you?\nOr send /skip."
     )
 
-    return LOCATION
+    return YOUNAME
 
 
-async def skip_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Skips the photo and asks for a location."""
+async def skip_charname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """AI Character name"""
     user = update.message.from_user
-    logger.info("User %s did not send a photo.", user.first_name)
+
+    UserID = user['id']
+    CharData[UserID].append('')
+
+    logger.info("User %s did not send a charname.", user.first_name)
     await update.message.reply_text(
-        "I bet you look great! Now, send me your location please, or send /skip."
+        "Ok, if you don't want to enter this value, enter what the Persona should call you."
     )
 
-    return LOCATION
+    return YOUNAME
 
 
-async def location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Stores the location and asks for some info about the user."""
+async def youname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Name for user"""
+    # user = update.message.from_user
     user = update.message.from_user
-    user_location = update.message.location
-    logger.info(
-        "Location of %s: %f / %f", user.first_name, user_location.latitude, user_location.longitude
-    )
+
+    UserID = user['id']
+    CharData[UserID].append(update.message.text)
+
+    logger.info("The AI will call you: %s", update.message.text)
     await update.message.reply_text(
-        "Maybe I can visit you sometime! At last, tell me something about yourself."
+        "Describe, in one plain text message, what the Persona is like.\n"
+        "Note:\n"
+        "   - Include physical, behavioural, and mental characteristics.\n"
+        "   - You can also add contextual information about what the Persona did in the past, present or future.\n"
+        "   - Must be in less than 500 words.\n"
+        "Or send /skip",
+        parse_mode=ParseMode.HTML
+    )
+
+    return AIPERSONA
+
+
+async def skip_youname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Name for user"""
+    user = update.message.from_user
+
+    UserID = user['id']
+    CharData[UserID].append('')
+
+    logger.info("User %s did not send a name for himself", user.first_name)
+    await update.message.reply_text(
+        "Describe, in one plain text message, what the Persona is like.\n"
+        "Note:\n"
+        "   - Include physical, behavioural, mental, characteristics\n"
+        "   - You can also add contextual information about what the Persona did in the past, present or future.\n"
+        "   - Must be in less than 500 words.\n"
+        "Or send /skip",
+        parse_mode=ParseMode.HTML
+    )
+
+    return AIPERSONA
+
+async def aipersona(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Persona data for the AI gen."""
+    # user = update.message.from_user
+    user = update.message.from_user
+
+    UserID = user['id']
+    CharData[UserID].append(update.message.text)
+
+    logger.info("The AI persona will be based on: %s", update.message.text)
+    await update.message.reply_text(
+        "<strong>Overseer:</strong> Persona and User Encounter / <i>Setup</i>\n\n"
+        "Describe, in one plain text message, the circumstances and context of the first encounter "
+        "between you and the Persona.\n"
+        "Or send /skip",
+        parse_mode=ParseMode.HTML
+    )
+    return SCENARIO
+
+async def skip_aipersona(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Persona data for the AI gen."""
+    user = update.message.from_user
+
+    UserID = user['id']
+    CharData[UserID].append('')
+
+    logger.info("User %s did not send a persona.", user.first_name)
+    await update.message.reply_text(
+        "<strong>Overseer:</strong> Persona and User Encounter / <i>Setup</i>\n\n"
+        "Describe, in one plain text message, the circumstances and context of the first encounter "
+        "between you and the Persona.\n"
+        "Or send /skip",
+        parse_mode=ParseMode.HTML
+    )
+
+    return SCENARIO
+
+async def scenario(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Scenario"""
+    # user = update.message.from_user
+    user = update.message.from_user
+
+    UserID = user['id']
+    CharData[UserID].append(update.message.text)
+
+    logger.info("The scenario is: %s . AND whole Dict: %s", update.message.text, CharData)
+    await update.message.reply_text(
+        "<strong>Overseer:</strong>The persona is ready.\nNow start your conversation.\n\n<strong>Talk to it like you would to a real human</strong>\n\n"
+        "Type /cancel to detach Persona; Create new Persona with /start",
+        parse_mode=ParseMode.HTML
+    )
+    return BIO
+
+async def skip_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Scenario"""
+    user = update.message.from_user
+
+    UserID = user['id']
+    CharData[UserID].append('')
+    
+    logger.info("User %s did not send a scenario.", user.first_name)
+    await update.message.reply_text(
+        "<strong>Overseer:</strong> The persona is ready.\nNow start your conversation.\n\n<strong>Talk to it like you would to a real human</strong>\n\n"
+        "type /cancel to detach Persona and create new Persona with /start",
+        parse_mode=ParseMode.HTML
     )
 
     return BIO
 
-
-async def skip_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Skips the location and asks for info about the user."""
-    user = update.message.from_user
-    logger.info("User %s did not send a location.", user.first_name)
-    await update.message.reply_text(
-        "You seem a bit paranoid! At last, tell me something about yourself."
-    )
-
-    return BIO
 
 # TODO - Implement character create via http api. Limit to 1 available character.
 
@@ -134,7 +238,13 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Stores the info about the user and ends the conversation."""
 
     user = update.message.from_user
-    logger.info("Bio of %s: %s", user.first_name, update.message.text)
+    UserID = user['id']
+
+    # TODO CHECK NUMBER OF CHARS PRESENT
+    CharHash = "telegram"+"_111_"+str(UserID)+"_char"+CharData[UserID][0]
+    CharProfile = CharData[UserID]
+
+    logger.info("Bio of %s: %s", CharHash, CharProfile)
 
     async with websockets.connect('ws://34.118.23.184:7860/queue/join') as websocket:
 
@@ -143,7 +253,7 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         response = await websocket.recv()
         if response:
             await websocket.send(json.dumps({
-                'session_hash':'1234esy4hb6q',
+                'session_hash':CharHash,
                 'fn_index':3
             }))
             time.sleep(3)
@@ -153,10 +263,12 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             response = await websocket.recv()
             print(response)
             if response:
+                # DYNAMIC DATA FROM USER: None, None, message, None
+                # THEN DATA FROM PERSONA: char name, your name, char persona, char greet, scenario, example chat 
                 await websocket.send(json.dumps({
                     "fn_index":3,
-                    "data":[None,None,update.message.text,None,"","","","","",""],
-                    "session_hash":"1234esy4hb6q"
+                    "data":[None,None,update.message.text,None,CharProfile[0],CharProfile[1],CharProfile[2],"Hello",CharProfile[3],None],
+                    "session_hash":CharHash
                 }))
                 response = await websocket.recv()
                 print(response)
@@ -164,8 +276,9 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 if json.loads(response)['msg'] == 'process_starts':
                     response = await websocket.recv()
                     print("final: ",response)
-
-    await update.message.reply_text(response)
+                    response = json.loads(response)
+                    
+    await update.message.reply_text(response["output"]["data"][3][-1][-1], parse_mode=ParseMode.HTML)
     
     return BIO
 
@@ -175,7 +288,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
     logger.info("User %s canceled the conversation.", user.first_name)
     await update.message.reply_text(
-        "Bye! I hope we can talk again some day.", reply_markup=ReplyKeyboardRemove()
+        "Goodbye.", reply_markup=ReplyKeyboardRemove()
     )
 
     return ConversationHandler.END
@@ -186,16 +299,15 @@ def main() -> None:
     # Create the Application and pass it your bot's token.
     application = Application.builder().token("6038194661:AAF3UGR6OHNnIHPd64mw7fYYpZJKo94WVMM").build()
 
-    # Add conversation handler with the states GENDER, PHOTO, LOCATION and BIO
+    # Add conversation handler with the states CHARCREATE, CHARNAME, YOUNAME, AIPERSONA and BIO
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
-            GENDER: [MessageHandler(filters.Regex("^(Boy|Girl|Other)$"), gender)],
-            PHOTO: [MessageHandler(filters.PHOTO, photo), CommandHandler("skip", skip_photo)],
-            LOCATION: [
-                MessageHandler(filters.LOCATION, location),
-                CommandHandler("skip", skip_location),
-            ],
+            CHARCREATE: [MessageHandler(filters.Regex("^(Create|Other)$"), charcreate)],
+            CHARNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, charname), CommandHandler("skip", skip_charname)],
+            YOUNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, youname), CommandHandler("skip", skip_youname)],
+            AIPERSONA: [MessageHandler(filters.TEXT & ~filters.COMMAND, aipersona), CommandHandler("skip", skip_aipersona)],
+            SCENARIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, scenario), CommandHandler("skip", skip_scenario)],
             BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, bio)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
@@ -208,6 +320,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    
     ascii_banner = pyfiglet.figlet_format("PersonaForge TG Client")
     print(ascii_banner)
     main()
