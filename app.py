@@ -17,6 +17,7 @@ import pyfiglet
 import asyncio
 import json
 import time
+import re
 
 from telegram import __version__ as TG_VER
 from telegram.constants import ParseMode
@@ -64,8 +65,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         "Note:\n"
         "   - Overseer will bind and retain the character until compute server restart.\n"
         "   - Persona names cannot be shared between personas.\n"
-        "   - Overseer will remember your Personas by their names until compute server restart."
-        "   - You can reconnect to a Persona by 'creating' with the Persona name, leaving all Persona setup fields blank.",
+        "   - Overseer will remember your Personas by their names until compute server restart.\n"
+        "   - You can reconnect to a Persona by 'creating' with the Persona name, leaving all Persona setup fields blank.\n"
+        "   - <strong>This AI is unmoderated and can be explicit. By continuing, you confirm that you are 18+.</strong>\n",
         reply_markup=ReplyKeyboardMarkup(
             reply_keyboard, one_time_keyboard=True, input_field_placeholder="Create a Char"
         ), parse_mode=ParseMode.HTML,
@@ -131,7 +133,7 @@ async def youname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     logger.info("The AI will call you: %s", update.message.text)
     await update.message.reply_text(
-        "Describe, in one plain text message, what the Persona is like.\n"
+        "Describe, in one plain text message, what the Persona is like.\n\n"
         "Note:\n"
         "   - Include physical, behavioural, and mental characteristics.\n"
         "   - You can also add contextual information about what the Persona did in the past, present or future.\n"
@@ -152,7 +154,7 @@ async def skip_youname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
     logger.info("User %s did not send a name for himself", user.first_name)
     await update.message.reply_text(
-        "Describe, in one plain text message, what the Persona is like.\n"
+        "Describe, in one plain text message, what the Persona is like.\n\n"
         "Note:\n"
         "   - Include physical, behavioural, mental, characteristics\n"
         "   - You can also add contextual information about what the Persona did in the past, present or future.\n"
@@ -191,7 +193,7 @@ async def skip_aipersona(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     logger.info("User %s did not send a persona.", user.first_name)
     await update.message.reply_text(
         "<strong>Overseer:</strong> Persona and User Encounter / <i>Setup</i>\n\n"
-        "Describe, in one plain text message, the circumstances and context of the first encounter "
+        "Describe, in one plain text message, the circumstances and context of the first encounter"
         "between you and the Persona.\n"
         "Or send /skip",
         parse_mode=ParseMode.HTML
@@ -209,8 +211,10 @@ async def scenario(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     logger.info("The scenario is: %s . AND whole Dict: %s", update.message.text, CharData)
     await update.message.reply_text(
-        "<strong>Overseer:</strong>The persona is ready.\nNow start your conversation.\n\n<strong>Talk to it like you would to a real human</strong>\n\n"
-        "Type /cancel to detach Persona; Create new Persona with /start",
+        "<strong>Overseer:</strong> The persona is ready.\nNow start your conversation.\n\n<strong>Talk to it like you would to a real human</strong>\n\n"
+        "<strong>You may narrate actions, activites, or change of context during the conversation. Format the words with <i>italic</>.</strong>\n\n"
+        "<strong>You can ask the Persona for actions by using the 'describe' or 'narrate' keyword. By asking, for example: 'Describe what you will do next'</strong>\n\n"
+        "type /cancel to detach Persona and create new Persona with /start",
         parse_mode=ParseMode.HTML
     )
     return BIO
@@ -225,6 +229,8 @@ async def skip_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     logger.info("User %s did not send a scenario.", user.first_name)
     await update.message.reply_text(
         "<strong>Overseer:</strong> The persona is ready.\nNow start your conversation.\n\n<strong>Talk to it like you would to a real human</strong>\n\n"
+        "<strong>You may narrate actions, activites, or change of context during the conversation. Format the words with <i>italic</>.</strong>\n\n"
+        "<strong>You can ask the Persona for actions by using the 'describe' or 'narrate' keyword. By asking, for example: 'Describe what you will do next'</strong>\n\n"
         "type /cancel to detach Persona and create new Persona with /start",
         parse_mode=ParseMode.HTML
     )
@@ -249,7 +255,7 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     async with websockets.connect('ws://34.118.23.184:7860/queue/join') as websocket:
 
         # TODO implement hashids bound to user id. id -> hashid -> hashid2
-
+        
         response = await websocket.recv()
         if response:
             await websocket.send(json.dumps({
@@ -274,11 +280,18 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 print(response)
                 print(type(response))
                 if json.loads(response)['msg'] == 'process_starts':
-                    response = await websocket.recv()
-                    print("final: ",response)
-                    response = json.loads(response)
                     
-    await update.message.reply_text(response["output"]["data"][3][-1][-1], parse_mode=ParseMode.HTML)
+                    response = await websocket.recv()
+                    
+                    print("final: ",response)
+                    
+                    response = json.loads(response)
+                
+                    AIResponse = response["output"]["data"][3][-1][-1]
+                    AIResponse = re.sub("^[^<\w]+", "", str(AIResponse), count=1)
+ 
+                    
+    await update.message.reply_text(AIResponse, parse_mode=ParseMode.HTML)
     
     return BIO
 
@@ -297,7 +310,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 def main() -> None:
     """Run the bot."""
     # Create the Application and pass it your bot's token.
-    application = Application.builder().token("6038194661:AAF3UGR6OHNnIHPd64mw7fYYpZJKo94WVMM").build()
+    application = Application.builder().token("6250262905:AAG_pFYEEdjvM2fqrldHHEduA2wmnuopSko").build()
 
     # Add conversation handler with the states CHARCREATE, CHARNAME, YOUNAME, AIPERSONA and BIO
     conv_handler = ConversationHandler(
