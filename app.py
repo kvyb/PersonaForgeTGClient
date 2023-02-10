@@ -252,7 +252,7 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     logger.info("Bio of %s: %s", CharHash, CharProfile)
 
-    async with websockets.connect('ws://34.118.23.184:7860/queue/join') as websocket:
+    async with websockets.connect('ws://34.116.221.94:7860/queue/join') as websocket:
 
         # TODO implement hashids bound to user id. id -> hashid -> hashid2
         
