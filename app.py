@@ -1,5 +1,5 @@
 # TODO Add "Typing" UI effect before response. See other Github for this.
-# TODO Handle LOAD and DELETE states if no Personas are present.
+# TODO SET UP PAYMENT LIMITS.
 import websockets
 import logging
 import os
@@ -71,7 +71,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     # reply_keyboard = [["Creat Persona", "Load Persona", "Edit Persona", "Delete Persona"]]
     keyboard = [
         [
-            InlineKeyboardButton("About", callback_data="About"),
+            # InlineKeyboardButton("About", callback_data="About"),
             InlineKeyboardButton("Load", callback_data="Load"),
         ],
         [
@@ -154,7 +154,9 @@ async def charcreate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     
     elif query.data == "Delete":
         document = collection.find_one({"_id": UserID})
-        if document is not None:
+        
+        if "_id" in document.keys():
+            print(document)
             reply_keyboard = []
             document.pop("_id")
             document.pop("SelectedPersona")
@@ -163,16 +165,19 @@ async def charcreate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
             reply_keyboard.append(list(document.keys()))
             print("REPLY KEYS:::",reply_keyboard)
-            await context.bot.send_message(text="<strong>Overseer:</strong> Delete Your existing Personas:\n\n", chat_id=ChatID, reply_markup=ReplyKeyboardMarkup(
+            await context.bot.send_message(text="<strong>Overseer:</strong> Personas in Storage:\nRestart the Bot to return to menu. /cancel\n", chat_id=ChatID, reply_markup=ReplyKeyboardMarkup(
                 reply_keyboard, one_time_keyboard=True, input_field_placeholder="Select Persona to Delete."
                 ), parse_mode=ParseMode.HTML,
             )
         else:
-            print("Document not found.")
+            reply_keyboard_cancel = [["/cancel"]]
+            await context.bot.send_message(text="Nothing to delete. Restart the Bot to return to menu. /cancel", chat_id=UserID, reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard_cancel, one_time_keyboard=True, input_field_placeholder="Restart the Bot"
+                ), parse_mode=ParseMode.HTML)
         return DELETE
     
-    elif query.data == "About":
-        return
+    # elif query.data == "About":
+    #     return
 
 # === CREATE BLOCK START ===
 
@@ -186,7 +191,7 @@ async def charname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if update.message.text in collection.find_one({"_id": UserID}):
         reply_keyboard = [["/cancel"]]
         await context.bot.send_message(text="Persona with this name already exists.", chat_id=ChatID, reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard, one_time_keyboard=True, input_field_placeholder="Select Persona to load."
+                reply_keyboard, one_time_keyboard=True, input_field_placeholder="/cancel and /start to return to menu"
                 ), parse_mode=ParseMode.HTML)
     else:
         CharData[UserID].append(update.message.text)
@@ -351,6 +356,7 @@ async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
     UserID = user['id']
     ToDelete = str(update.message.text)
+
     print("MESSAGE TEXT:",update.message.text)
     if update.message.text in collection.find_one({"_id": UserID}):
         collection.update_one({"_id": UserID}, {"$unset": {ToDelete: ""}})
@@ -462,6 +468,7 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     CharName = str(CharData[UserID][0])
 
     document = collection.find_one({"_id": UserID})
+    collection.update_one({"_id": UserID}, {"$set": {"SelectedPersona": CharName}})
     if document is not None:
         array = document.get(CharName)
         if array is not None:
