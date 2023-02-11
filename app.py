@@ -1,5 +1,6 @@
 # TODO Add "Typing" UI effect before response. See other Github for this.
 # TODO SET UP PAYMENT LIMITS.
+# TODO Set UP PAYING USER FLAIR
 import websockets
 import logging
 import os
@@ -7,6 +8,7 @@ import pyfiglet
 import asyncio
 import json
 import time
+from datetime import datetime
 import re
 
 from telegram import __version__ as TG_VER
@@ -127,8 +129,17 @@ async def charcreate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         
         if document is not None:
             reply_keyboard = []
+            # REMOVE THESE OR IT WONT ITERATE WITH FINALISED PERSONAS.
+            # TODO: REVIEW THE BELOW COS THERE CAN BE AN EXCEPTION IF USER TRIES TO LOAD WITHOUT A COMPLETE CHAR (WONT HAPPEN REALLY)
             document.pop("_id")
-            document.pop("SelectedPersona")
+            if document["SelectedPersona"]:
+                document.pop("SelectedPersona", None)
+            if document["ChatCount"]:
+                document.pop("ChatCount", None)
+            if document["PaidDate"]:
+                document.pop("PaidDate", None)
+
+            print("DOCUMENT ON LOAD:::135:::", document)
             # CHECK THAT PERSONAS HAVE ALL REQUIRED PROPERTIES BEFORE SHOWING THEM IN SELECTION:
             required_keys = {"CallsUser", "Scenario", "Encounter", "CharHash"}
 
@@ -159,7 +170,12 @@ async def charcreate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             print(document)
             reply_keyboard = []
             document.pop("_id")
-            document.pop("SelectedPersona")
+            if document["SelectedPersona"]:
+                document.pop("SelectedPersona", None)
+            if document["ChatCount"]:
+                document.pop("ChatCount", None)
+            if document["PaidDate"]:
+                document.pop("PaidDate", None)
 
             # COMPOSE KEYBOARD WITH PERSONA NAMES
 
@@ -405,6 +421,19 @@ async def chatfromload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     CharProfile.append(SelectedPersona)
     for item in CharDataDict:
         CharProfile.extend(item.values())
+
+
+    print("DOCUMENT:::", document)
+    if not "ChatCount" in document:
+        print("CHATCOUNT:::", document)
+        collection.update_one({"_id": UserID}, {"$inc": {"ChatCount": 1}}, upsert=True)
+    elif document["ChatCount"] < 3 or "PaidDate" in document:
+        collection.update_one({"_id": UserID}, {"$inc": {"ChatCount": 1}}, upsert=True)
+    else:
+        buy_keyboard = [["/buy"]]
+        await update.effective_message.reply_html(
+            "Chat limit reached. /pay to get unlimited access.\n")
+        return 
     
     logger.info("\nTALKING WITH PERSONA PROFILE :: %s", CharProfile)
 
@@ -467,7 +496,28 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     CharName = str(CharData[UserID][0])
 
+    
+
+    # === CHECK NUMBER OF AI CHAT RUNS ===
     document = collection.find_one({"_id": UserID})
+    print("DOCUMENT:::", document)
+    if not "ChatCount" in document:
+        print("CHATCOUNT:::", document)
+        collection.update_one({"_id": UserID}, {"$inc": {"ChatCount": 1}}, upsert=True)
+    elif document["ChatCount"] < 3 or "PaidDate" in document:
+        collection.update_one({"_id": UserID}, {"$inc": {"ChatCount": 1}}, upsert=True)
+    else:
+        buy_keyboard = [["/buy"]]
+        await update.effective_message.reply_html(
+            "Chat limit reached. /pay to get unlimited access.\n")
+        return 
+
+    # PaidDate
+
+
+
+
+    # === SET ACTIVE SELECTED PERSONA FOR USER ===
     collection.update_one({"_id": UserID}, {"$set": {"SelectedPersona": CharName}})
     if document is not None:
         array = document.get(CharName)
@@ -558,7 +608,7 @@ async def start_without_shipping_callback(update: Update, context: ContextTypes.
     # In order to get a provider_token see https://core.telegram.org/bots/payments#getting-a-token
     currency = "USD"
     # price in dollars
-    price = 10
+    price = 5
     # price * 100 so as to include 2 decimal points
     prices = [LabeledPrice("Persona Forge AI", (price*100)-1)]
 
@@ -580,6 +630,15 @@ async def precheckout_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # finally, after contacting the payment provider...
 async def successful_payment_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    print("AFTER PAYMENT:::", update.message.from_user)
+    UserID = update.message.from_user['id']
+    document = collection.find_one({"_id": UserID})
+    print("DOCUMENT:::", document)
+    if not "PaidDate" in document:
+        print("CHATCOUNT:::", document)
+        time = datetime.now()
+        collection.update_one({"_id": UserID}, {"$set": {"PaidDate": time}}, upsert=True)
+
     """Confirms the successful payment."""
     # do something after successfully receiving payment?
     await update.message.reply_text("Thank you for your payment!\n\n Limits lifted. You can continue using the AI.")
