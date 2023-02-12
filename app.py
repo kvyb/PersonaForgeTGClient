@@ -52,6 +52,7 @@ from telegram.ext import (
 load_dotenv('.env')
 BOT_KEY = os.getenv('TELEGRAM_TOKEN')
 STRIPE_TOKEN = os.getenv('STRIPE_TOKEN')
+FREE_CHAT_LIMIT = 40
 
 # ============================
 # === Enable logging ===
@@ -439,7 +440,7 @@ async def chatfromload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     if not "ChatCount" in document:
         print("CHATCOUNT:::", document)
         collection.update_one({"_id": UserID}, {"$inc": {"ChatCount": 1}}, upsert=True)
-    elif document["ChatCount"] < 3 or "PaidDate" in document:
+    elif document["ChatCount"] < FREE_CHAT_LIMIT or "PaidDate" in document:
         collection.update_one({"_id": UserID}, {"$inc": {"ChatCount": 1}}, upsert=True)
     else:
         buy_keyboard = [["/buy"]]
@@ -521,7 +522,7 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     if not "ChatCount" in document:
         collection.update_one({"_id": UserID}, {"$inc": {"ChatCount": 1}}, upsert=True)
-    elif document["ChatCount"] < 3 or "PaidDate" in document:
+    elif document["ChatCount"] < FREE_CHAT_LIMIT or "PaidDate" in document:
         collection.update_one({"_id": UserID}, {"$inc": {"ChatCount": 1}}, upsert=True)
     else:
         buy_keyboard = [["/buy"]]
