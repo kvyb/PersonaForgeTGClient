@@ -158,7 +158,7 @@ async def charcreate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 document.pop("SelectedPersona", None)
             if document["ChatCount"]:
                 document.pop("ChatCount", None)
-            if document["PaidDate"]:
+            if "PaidDate" in document and document["PaidDate"]:
                 document.pop("PaidDate", None)
 
             # CHECK THAT PERSONAS HAVE ALL REQUIRED PROPERTIES BEFORE SHOWING THEM IN SELECTION:
@@ -195,7 +195,7 @@ async def charcreate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 document.pop("SelectedPersona", None)
             if document["ChatCount"]:
                 document.pop("ChatCount", None)
-            if document["PaidDate"]:
+            if "PaidDate" in document and document["PaidDate"]:
                 document.pop("PaidDate", None)
 
             # COMPOSE KEYBOARD WITH PERSONA NAMES
