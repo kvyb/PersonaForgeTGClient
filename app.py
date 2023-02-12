@@ -102,7 +102,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             "Press the <strong>Create</strong> button to make a new AI Persona. 👩👨\n\n\n"
             "Note:\n\n"
             "   - It takes the Persona 8 seconds to reply to a message, on average.\n"
-            "   - Running this AI is computationally expensive. You may send up to 50 messages for free. Consider purchasing the full access to support this project.\n"
             "   - <strong>This AI is unmoderated and can be explicit. By continuing, you confirm that you are 18+.</strong>\n"
             "   - <strong>Conversation data between the AI and users is not stored.</strong>\n",
             parse_mode=ParseMode.HTML, reply_markup = InlineKeyboardMarkup(keyboard)
