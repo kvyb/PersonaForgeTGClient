@@ -33,7 +33,7 @@ if __version_info__ < (20, 0, 0, "alpha", 5):
         f"visit https://docs.python-telegram-bot.org/en/v{TG_VER}/examples.html"
     )
 from telegram.constants import ParseMode
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, LabeledPrice, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, LabeledPrice, InlineKeyboardButton, InlineKeyboardMarkup, ChatActions
 from telegram.ext import (
     Updater,
     CallbackContext,
@@ -47,6 +47,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     PicklePersistence,
 )
+import telegram
 
 # ============================
 load_dotenv('.env')
@@ -70,9 +71,8 @@ collection = db["PersonaForge"]
 # collection.insert_one({"_id":0, "user_name":"Kris"})
 # Global dict to store data in telegram session
 
-
 # === BOT ===
-CHARCREATE, CHARLOAD, CHARNAME, YOUNAME, AIPERSONA, SCENARIO, BIO, CHATFROMLOAD, DELETE = range(9)
+CHARCREATE, CHARLOAD, CHARNAME, YOUNAME, AIPERSONA, SCENARIO, CHAT, CHATFROMLOAD, DELETE = range(9)
 
 # TODO set character info here:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -357,7 +357,7 @@ async def scenario(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         "type /cancel to detach from Persona, and press /start to return to main menu.",
         parse_mode=ParseMode.HTML
     )
-    return BIO
+    return CHAT
 
 async def skip_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Scenario"""
@@ -379,7 +379,7 @@ async def skip_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         parse_mode=ParseMode.HTML
     )
 
-    return BIO
+    return CHAT
 
 # === CREATE BLOCK ENDS ===
 # === DELETE BLOCK STARTS ===
@@ -486,8 +486,7 @@ async def chatfromload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
                     regex = r"^[^<]+"
                     AIResponse = re.sub(regex, "", AIResponseRaw, re.MULTILINE)
- 
-                    
+       
     await update.message.reply_text(AIResponse, parse_mode=ParseMode.HTML)
     
     return CHATFROMLOAD
@@ -495,7 +494,7 @@ async def chatfromload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 # === LOAD BLOCK ENDS ===
 # TODO THE BELOW NEEDS A REFACTOR PRETTY BAD
 
-async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+async def chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Stores the info about the user and ends the conversation."""
 
     user = update.message.from_user
@@ -590,10 +589,10 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                     AIResponseRaw = response["output"]["data"][3][-1][-1]
                     regex = r"^[^<]+"
                     AIResponse = re.sub(regex, "", AIResponseRaw, re.MULTILINE)
-                    
+
     await update.message.reply_text(AIResponse, parse_mode=ParseMode.HTML)
     
-    return BIO
+    return CHAT
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -659,7 +658,7 @@ def main() -> None:
     persistence = PicklePersistence(filepath="PersonaForgeBot")
     application = Application.builder().token(BOT_KEY).persistence(persistence).build()
 
-    # Add conversation handler with the states CHARCREATE, CHARNAME, YOUNAME, AIPERSONA and BIO
+    # Add conversation handler with the states CHARCREATE, CHARNAME, YOUNAME, AIPERSONA and CHAT
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
         states={
@@ -669,7 +668,7 @@ def main() -> None:
             YOUNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, youname), CommandHandler("skip", skip_youname)],
             AIPERSONA: [MessageHandler(filters.TEXT & ~filters.COMMAND, aipersona), CommandHandler("skip", skip_aipersona)],
             SCENARIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, scenario), CommandHandler("skip", skip_scenario)],
-            BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, bio)],
+            CHAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, chat)],
             CHATFROMLOAD: [MessageHandler(filters.TEXT & ~filters.COMMAND, chatfromload)],
             DELETE: [MessageHandler(filters.TEXT & ~filters.COMMAND, delete)]
         },
