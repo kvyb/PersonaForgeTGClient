@@ -1,6 +1,11 @@
-# TODO Add "Typing" UI effect before response. See other Github for this.
-# TODO SET UP PAYMENT LIMITS.
-# TODO Set UP PAYING USER FLAIR
+# TODO QOL Add "Typing" UI effect before response. See other Github for this.
+# TODO DONE SET UP PAYMENT LIMITS.
+# TODO DONE Set UP PAYING USER FLAIR
+# TODO QOL Replace /cancel /start with proper handlers (see return)
+# TODO DONE Make good descriptions
+# TODO Add templates for everyone, of several characters to load.
+# TODO DONE rewrite global storage to db
+# TODO DONE fix regex to exclude the characters not just symbols
 import websockets
 import logging
 import os
@@ -39,7 +44,8 @@ from telegram.ext import (
     MessageHandler,
     filters,
     PreCheckoutQueryHandler,
-    CallbackQueryHandler
+    CallbackQueryHandler,
+    PicklePersistence,
 )
 
 # ============================
@@ -62,7 +68,7 @@ db = cluster["Customers"]
 collection = db["PersonaForge"]
 # collection.insert_one({"_id":0, "user_name":"Kris"})
 # Global dict to store data in telegram session
-CharData = {}
+
 
 # === BOT ===
 CHARCREATE, CHARLOAD, CHARNAME, YOUNAME, AIPERSONA, SCENARIO, BIO, CHATFROMLOAD, DELETE = range(9)
@@ -81,21 +87,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             InlineKeyboardButton("Create", callback_data="Create")
         ],
     ]
-    await update.message.reply_text(
-        "<strong>Overseer Loaded</strong>\n\n"
-        "At any point, send  /cancel  to <u><strong>Stop</strong></u> and after /start <u><strong>Return</strong></u> to this menu.\n\n"
-        "Press the <strong>Create</strong> button to make a new AI Persona\n\n\n"
-        "Note:\n"
-        "   - Overseer will bind and retain the character until compute server restart.\n"
-        "   - Persona names cannot be shared between personas.\n"
-        "   - Overseer will remember your Personas by their names until compute server restart.\n"
-        "   - You can reconnect to a Persona by 'creating' with the Persona name, leaving all Persona setup fields blank.\n"
-        "   - <strong>This AI is unmoderated and can be explicit. By continuing, you confirm that you are 18+.</strong>\n\n",
-        parse_mode=ParseMode.HTML, reply_markup = InlineKeyboardMarkup(keyboard)
-        # reply_markup=ReplyKeyboardMarkup(
-        #     reply_keyboard, one_time_keyboard=True, input_field_placeholder="Create a Char"
-        # ), parse_mode=ParseMode.HTML,
-    )
+
+    user = update.message.from_user
+    UserID = user['id']
+    document = collection.find_one({"_id": UserID})
+
+    if "PaidDate" in document:
+        await update.message.reply_text(
+            "<strong>✅ You have Full Access.</strong>\n\n"
+            "<strong><u>PersonaForge GTP-6-JB:</u> </strong>\n\nTrained on 6 Billion parameters, 402 Billion data points, 1TB of data, and 383K epochs, this is an extremely robust implementation of the conversational AI model.\n\n"
+            "<strong>This model can take the persona of any person or character you wish and communicate as a person.</strong>\n\n"
+            "At any point, send /cancel to <u><strong>Stop</strong></u> and after send /start to <u><strong>Return</strong></u> to this menu.\n\n"
+            "Press the <strong>Create</strong> button to make a new AI Persona. 👩👨\n\n\n"
+            "Note:\n\n"
+            "   - It takes the Persona 8 seconds to reply to a message, on average.\n"
+            "   - Running this AI is computationally expensive. You may send up to 50 messages for free. Consider purchasing the full access to support this project.\n"
+            "   - <strong>This AI is unmoderated and can be explicit. By continuing, you confirm that you are 18+.</strong>\n"
+            "   - <strong>Conversation data between the AI and users is not stored.</strong>\n",
+            parse_mode=ParseMode.HTML, reply_markup = InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        await update.message.reply_text(
+            "<strong>PersonaForge GTP-6-JB: </strong>\n\nTrained on 6 Billion parameters, 402 Billion data points, 1TB of data, and 383K epochs, this is an extremely robust implementation of the conversational AI model.\n\n"
+            "This model can take the persona of any person or character you wish and communicate as a person.\n\n"
+            "At any point, send /cancel to <u><strong>Stop</strong></u> and after send /start to <u><strong>Return</strong></u> to this menu.\n\n"
+            "Press the <strong>Create</strong> button to make a new AI Persona. 👩👨\n\n\n"
+            "Note:\n\n"
+            "   - It takes the Persona 8 seconds to reply to a message, on average.\n"
+            "   - Running this AI is computationally expensive. You may send up to 50 messages for free. Consider purchasing the full access to support this project.\n"
+            "   - <strong>This AI is unmoderated and can be explicit. By continuing, you confirm that you are 18+.</strong>\n"
+            "   - <strong>Conversation data between the AI and users is not stored.</strong>\n",
+            parse_mode=ParseMode.HTML, reply_markup = InlineKeyboardMarkup(keyboard)
+        )
     return CHARCREATE
 
 async def charcreate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -109,7 +132,6 @@ async def charcreate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     logger.info("Char CREATE mode: %s: %s", user.first_name, query.from_user)
     ChatID = update.callback_query.from_user.id
     UserID = user['id']
-    CharData.update({UserID: []})
 
     if collection.find_one({"_id": UserID}) is None:
         collection.insert_one({"_id": UserID})
@@ -139,7 +161,6 @@ async def charcreate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             if document["PaidDate"]:
                 document.pop("PaidDate", None)
 
-            print("DOCUMENT ON LOAD:::135:::", document)
             # CHECK THAT PERSONAS HAVE ALL REQUIRED PROPERTIES BEFORE SHOWING THEM IN SELECTION:
             required_keys = {"CallsUser", "Scenario", "Encounter", "CharHash"}
 
@@ -156,7 +177,7 @@ async def charcreate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                 reply_keyboard.append(keys[i:i+4])
 
             await context.bot.send_message(text="<strong>Overseer:</strong> Select Your existing Personas:\nOr type /cancel\n", chat_id=ChatID, reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard, one_time_keyboard=True, input_field_placeholder="Select Persona to load."
+                reply_keyboard, input_field_placeholder="Select Persona to load."
                 ), parse_mode=ParseMode.HTML,
             )
         else:
@@ -180,15 +201,15 @@ async def charcreate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             # COMPOSE KEYBOARD WITH PERSONA NAMES
 
             reply_keyboard.append(list(document.keys()))
-            print("REPLY KEYS:::",reply_keyboard)
-            await context.bot.send_message(text="<strong>Overseer:</strong> Personas in Storage:\nRestart the Bot to return to menu. /cancel\n", chat_id=ChatID, reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard, one_time_keyboard=True, input_field_placeholder="Select Persona to Delete."
+
+            await context.bot.send_message(text="Personas in Storage:\nRestart the Bot to return to menu. /cancel\n", chat_id=ChatID, reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, input_field_placeholder="Select Persona to Delete."
                 ), parse_mode=ParseMode.HTML,
             )
         else:
             reply_keyboard_cancel = [["/cancel"]]
             await context.bot.send_message(text="Nothing to delete. Restart the Bot to return to menu. /cancel", chat_id=UserID, reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard_cancel, one_time_keyboard=True, input_field_placeholder="Restart the Bot"
+                reply_keyboard_cancel, input_field_placeholder="Restart the Bot"
                 ), parse_mode=ParseMode.HTML)
         return DELETE
     
@@ -203,50 +224,35 @@ async def charname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
     UserID = user['id']
     ChatID = update.message.from_user.id
+    collection.update_one({"_id": UserID}, {"$set": {"SelectedPersona": update.message.text}})
     
     if update.message.text in collection.find_one({"_id": UserID}):
         reply_keyboard = [["/cancel"]]
-        await context.bot.send_message(text="Persona with this name already exists.", chat_id=ChatID, reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard, one_time_keyboard=True, input_field_placeholder="/cancel and /start to return to menu"
+        await context.bot.send_message(text="You already have a Persona with this name. /cancel and /start to return to menu", chat_id=ChatID, reply_markup=ReplyKeyboardMarkup(
+                reply_keyboard, input_field_placeholder="type /cancel and /start to return to menu"
                 ), parse_mode=ParseMode.HTML)
+        return
     else:
-        CharData[UserID].append(update.message.text)
 
         collection.update_one({"_id": UserID}, {"$set": {update.message.text: []}}, upsert=True)
         print(collection.find_one({"_id": UserID}))
-
-        logger.info("Character name is: %s: %s", update.message.text, CharData)
         
         await update.message.reply_text(
-            "What should the persona call you?\nOr send /skip."
+            "What should the Persona call you?\nOr send /skip."
         )
 
         return YOUNAME
-
-
-# async def skip_charname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-#     """AI Character name"""
-#     user = update.message.from_user
-
-#     UserID = user['id']
-#     CharData[UserID].append('')
-
-#     logger.info("User %s did not send a charname.", user.first_name)
-#     await update.message.reply_text(
-#         "Ok, if you don't want to enter this value, enter what the Persona should call you."
-#     )
-
-#     return YOUNAME
-
 
 async def youname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Name for user"""
     # user = update.message.from_user
     user = update.message.from_user
-
     UserID = user['id']
-    CharData[UserID].append(update.message.text)
-    CharName = str(CharData[UserID][0])
+    
+    # GET SELECTED PERSONA DATA
+    document = collection.find_one({"_id": UserID})
+    CharName = document["SelectedPersona"]
+
     collection.update_one({"_id": UserID}, {"$push": {CharName: dict({"CallsUser": update.message.text})}}, upsert=True)
 
 
@@ -254,7 +260,7 @@ async def youname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(
         "Describe, in one plain text message, what the Persona is like.\n\n"
         "Note:\n"
-        "   - Include physical, behavioural, and mental characteristics.\n"
+        "   - Include physical, behavioural, and mental characteristics, interests etc.\n"
         "   - You can also add contextual information about what the Persona did in the past, present or future.\n"
         "   - Must be in less than 500 words.\n"
         "Or send /skip",
@@ -269,16 +275,17 @@ async def skip_youname(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     user = update.message.from_user
 
     UserID = user['id']
-    CharData[UserID].append('')
-    CharName = str(CharData[UserID][0])
+    document = collection.find_one({"_id": UserID})
+    CharName = document["SelectedPersona"]
+
     collection.update_one({"_id": UserID}, {"$push": {CharName: dict({"CallsUser": None})}}, upsert=True)
 
 
     logger.info("User %s did not send a name for himself", user.first_name)
     await update.message.reply_text(
-        "Describe, in one plain text message, what the Persona is like.\n\n"
+        "<strong>Describe, in one plain text message, what the Persona is like.</strong>\n\n"
         "Note:\n"
-        "   - Include physical, behavioural, mental, characteristics\n"
+        "   - Include physical, behavioural, and mental characteristics, interests etc.\n"
         "   - You can also add contextual information about what the Persona did in the past, present or future.\n"
         "   - Must be in less than 500 words.\n"
         "Or send /skip",
@@ -293,13 +300,15 @@ async def aipersona(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
 
     UserID = user['id']
-    CharData[UserID].append(update.message.text)
-    CharName = str(CharData[UserID][0])
+
+    document = collection.find_one({"_id": UserID})
+    CharName = document["SelectedPersona"]
+
     collection.update_one({"_id": UserID}, {"$push": {CharName: dict({"Scenario": update.message.text})}}, upsert=True)
 
     logger.info("The AI persona will be based on: %s", update.message.text)
     await update.message.reply_text(
-        "<strong>Overseer:</strong> Persona and User Encounter / <i>Setup</i>\n\n"
+        "<strong>Persona and User Encounter Setup</strong>\n\n"
         "Describe, in one plain text message, the circumstances and context of the first encounter "
         "between you and the Persona.\n"
         "Or send /skip",
@@ -311,14 +320,16 @@ async def skip_aipersona(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user = update.message.from_user
 
     UserID = user['id']
-    CharData[UserID].append('')
-    CharName = str(CharData[UserID][0])
+
+    document = collection.find_one({"_id": UserID})
+    CharName = document["SelectedPersona"]
+
     collection.update_one({"_id": UserID}, {"$push": {CharName: dict({"Scenario": None})}}, upsert=True)
 
     logger.info("User %s did not send a persona.", user.first_name)
     await update.message.reply_text(
-        "<strong>Overseer:</strong> Persona and User Encounter / <i>Setup</i>\n\n"
-        "Describe, in one plain text message, the circumstances and context of the first encounter"
+        "<strong>Persona and User Encounter Setup</strong>\n\n"
+        "Describe, in one plain text message, the circumstances and context of the first encounter "
         "between you and the Persona.\n"
         "Or send /skip",
         parse_mode=ParseMode.HTML
@@ -332,16 +343,17 @@ async def scenario(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
 
     UserID = user['id']
-    CharData[UserID].append(update.message.text)
-    CharName = str(CharData[UserID][0])
+
+    document = collection.find_one({"_id": UserID})
+    CharName = document["SelectedPersona"]
+
     collection.update_one({"_id": UserID}, {"$push": {CharName: dict({"Encounter": update.message.text})}}, upsert=True)
 
-    logger.info("The scenario is: %s . AND whole Dict: %s", update.message.text, CharData)
     await update.message.reply_text(
-        "<strong>Overseer:</strong> The persona is ready.\nNow start your conversation.\n\n<strong>Talk to it like you would to a real human</strong>\n\n"
-        "<strong>You may narrate actions, activites, or change of context during the conversation. Format the words with <i>italic</>.</strong>\n\n"
-        "<strong>You can ask the Persona for actions by using the 'describe' or 'narrate' keyword. By asking, for example: 'Describe what you will do next'</strong>\n\n"
-        "type /cancel to detach Persona and create new Persona with /start",
+        "<strong>The persona is ready.</strong>\nNow start your conversation.\n\n<strong>Talk to it like you would to a real human!</strong>\n\n"
+        "<strong>You may narrate, or ask the persona to narrate: actions, activites, change of context, during the conversation.</strong>\n\n"
+        "<strong>You can ask the Persona for actions by using the 'describe' or 'narrate' keyword. By asking, for example: 'Describe what will you do next?'</strong>\n\n"
+        "type /cancel to detach from Persona, and press /start to return to main menu.",
         parse_mode=ParseMode.HTML
     )
     return BIO
@@ -351,16 +363,18 @@ async def skip_scenario(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     user = update.message.from_user
 
     UserID = user['id']
-    CharData[UserID].append('')
-    CharName = str(CharData[UserID][0])
+
+    document = collection.find_one({"_id": UserID})
+    CharName = document["SelectedPersona"]
+    
     collection.update_one({"_id": UserID}, {"$push": {CharName: dict({"Encounter": None})}}, upsert=True)
     
     logger.info("User %s did not send a scenario.", user.first_name)
     await update.message.reply_text(
-        "<strong>Overseer:</strong> The persona is ready.\n\nNow start your conversation.\n\n<strong>Talk to it like you would to a real human</strong>\n\n"
-        "<strong>You may narrate actions, activites, or change of context during the conversation. Format the words with <i>italic</>.</strong>\n\n"
-        "<strong>You can ask the Persona for actions by using the 'describe' or 'narrate' keyword. By asking, for example: 'Describe what you will do next'</strong>\n\n"
-        "type /cancel to detach Persona and create new Persona with /start",
+        "<strong>The persona is ready.</strong>\nNow start your conversation.\n\n<strong>Talk to it like you would to a real human!</strong>\n\n"
+        "<strong>You may narrate, or ask the persona to narrate: actions, activites, change of context, during the conversation.</strong>\n\n"
+        "<strong>You can ask the Persona for actions by using the 'describe' or 'narrate' keyword. By asking, for example: 'Describe what will you do next?'</strong>\n\n"
+        "type /cancel to detach from Persona, and press /start to return to main menu.",
         parse_mode=ParseMode.HTML
     )
 
@@ -373,18 +387,17 @@ async def delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     UserID = user['id']
     ToDelete = str(update.message.text)
 
-    print("MESSAGE TEXT:",update.message.text)
     if update.message.text in collection.find_one({"_id": UserID}):
         collection.update_one({"_id": UserID}, {"$unset": {ToDelete: ""}})
         
-        reply = "<strong>Overseer:</strong> " + ToDelete + " has been Deleted."
+        reply = ToDelete + " has been Deleted."
 
         await update.message.reply_text(
             reply, parse_mode=ParseMode.HTML, reply_markup=ReplyKeyboardRemove()
         )
         reply_keyboard_cancel = [["/cancel"]]
         await context.bot.send_message(text="Restart the Bot to return to menu. /cancel", chat_id=UserID, reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard_cancel, one_time_keyboard=True, input_field_placeholder="Restart the Bot"
+                reply_keyboard_cancel, input_field_placeholder="Restart the Bot"
                 ), parse_mode=ParseMode.HTML)
 # === DELETE BLOCK ENDS ===
 # === LOAD BLOCK START ===
@@ -396,8 +409,8 @@ async def charload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     UserID = user['id']
     CharName = update.message.text
     collection.update_one({"_id": UserID}, {"$set": {"SelectedPersona": update.message.text}})
-
-    reply = "<strong>Overseer:</strong> " + CharName + " is ready.\n\nNow start your conversation.\n\n<strong>Talk to it like you would to a real human</strong>\n\n<strong>You may narrate actions, activites, or change of context during the conversation. Format the words with <i>italic</>.</strong>\n\n<strong>You can ask the Persona for actions by using the 'describe' or 'narrate' keyword. By asking, for example: 'Describe what you will do next'</strong>\n\ntype /cancel to detach Persona and create new Persona with /start"
+    print(CharName)
+    reply = "<strong>"+ CharName + " is ready.</strong>\nNow start your conversation.\n\n<strong>Talk to it like you would to a real human!</strong>\n\n<strong>You may narrate, or ask the persona to narrate: actions, activites, change of context, during the conversation.</strong>\n\n<strong>You can ask the Persona for actions by using the 'describe' or 'narrate' keyword. By asking, for example: 'Describe what will you do next?'</strong>\n\ntype /cancel to detach from Persona, and press /start to return to main menu."
 
     logger.info("User %s loading Personas. LIST OF PERSONAS:")
 
@@ -423,7 +436,6 @@ async def chatfromload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         CharProfile.extend(item.values())
 
 
-    print("DOCUMENT:::", document)
     if not "ChatCount" in document:
         print("CHATCOUNT:::", document)
         collection.update_one({"_id": UserID}, {"$inc": {"ChatCount": 1}}, upsert=True)
@@ -432,7 +444,8 @@ async def chatfromload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     else:
         buy_keyboard = [["/buy"]]
         await update.effective_message.reply_html(
-            "Chat limit reached. /pay to get unlimited access.\n")
+            "Chat limit reached. /buy to get unlimited access.\n", reply_markup=ReplyKeyboardMarkup(
+                buy_keyboard, input_field_placeholder="/buy"))
         return 
     
     logger.info("\nTALKING WITH PERSONA PROFILE :: %s", CharProfile)
@@ -449,10 +462,8 @@ async def chatfromload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             }))
             time.sleep(3)
             response = await websocket.recv()
-
-            print(response)
             response = await websocket.recv()
-            print(response)
+
             if response:
                 # DYNAMIC DATA FROM USER: None, None, message, None
                 # THEN DATA FROM PERSONA: char name, your name, char persona, char greet, scenario, example chat 
@@ -463,18 +474,17 @@ async def chatfromload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
                     "session_hash":CharProfile[4]
                 }))
                 response = await websocket.recv()
-                print(response)
-                print(type(response))
+
                 if json.loads(response)['msg'] == 'process_starts':
                     
                     response = await websocket.recv()
                     
-                    print("final: ",response)
-                    
                     response = json.loads(response)
-                
-                    AIResponse = response["output"]["data"][3][-1][-1]
-                    AIResponse = re.sub("^[^<\w]+", "", str(AIResponse), count=1)
+                    
+                    AIResponseRaw = response["output"]["data"][3][-1][-1]
+
+                    regex = r"^[^<]+"
+                    AIResponse = re.sub(regex, "", AIResponseRaw, re.MULTILINE)
  
                     
     await update.message.reply_text(AIResponse, parse_mode=ParseMode.HTML)
@@ -490,39 +500,42 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     user = update.message.from_user
     UserID = user['id']
 
-    # TODO CHECK NUMBER OF CHARS PRESENT
-    logger.info("CHARDATA: %s \n\n\nUser CHARDATA: %s", CharData, CharData[UserID])
-    CharHash = "telegram"+"_111_"+str(UserID)+"_char"+CharData[UserID][0]
-
-    CharName = str(CharData[UserID][0])
-
+    document = collection.find_one({"_id": UserID})
+    CharName = document["SelectedPersona"]
+    CharDataDict = document[CharName]
+    CharProfile = []
+    CharProfile.append(CharName)
+    for item in CharDataDict:
+        CharProfile.extend(item.values())
     
+    print("CHARPROFILE::", CharProfile)
+
+    # TODO CHECK NUMBER OF CHARS PRESENT
+    # logger.info("CHARDATA: %s \n\n\nUser CHARDATA: %s", CharData, CharData[UserID])
+    CharHash = "telegram"+"_111_"+str(UserID)+"_char"+CharName
+
+
 
     # === CHECK NUMBER OF AI CHAT RUNS ===
     document = collection.find_one({"_id": UserID})
-    print("DOCUMENT:::", document)
+
     if not "ChatCount" in document:
-        print("CHATCOUNT:::", document)
         collection.update_one({"_id": UserID}, {"$inc": {"ChatCount": 1}}, upsert=True)
     elif document["ChatCount"] < 3 or "PaidDate" in document:
         collection.update_one({"_id": UserID}, {"$inc": {"ChatCount": 1}}, upsert=True)
     else:
         buy_keyboard = [["/buy"]]
         await update.effective_message.reply_html(
-            "Chat limit reached. /pay to get unlimited access.\n")
+            "Chat limit reached. /buy to get unlimited access and support the project.\n", reply_markup=ReplyKeyboardMarkup(
+                buy_keyboard, input_field_placeholder="/buy"))
         return 
 
     # PaidDate
-
-
-
-
     # === SET ACTIVE SELECTED PERSONA FOR USER ===
-    collection.update_one({"_id": UserID}, {"$set": {"SelectedPersona": CharName}})
+    # collection.update_one({"_id": UserID}, {"$set": {"SelectedPersona": CharName}})
     if document is not None:
         array = document.get(CharName)
         if array is not None:
-            print('ARRAY', array)
             if any(x.get("CharHash") == CharHash for x in array):
                 print("CHARHASH already present for Persona")
             else:
@@ -538,8 +551,6 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     # else:
     #     pass
     
-    
-    CharProfile = CharData[UserID]
     logger.info("Bio of %s: %s", CharHash, CharProfile)
 
     async with websockets.connect('ws://34.116.221.94:7860/queue/join') as websocket:
@@ -554,22 +565,19 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             }))
             time.sleep(3)
             response = await websocket.recv()
-
-            print(response)
             response = await websocket.recv()
-            print(response)
+
             if response:
                 # DYNAMIC DATA FROM USER: None, None, message, None
                 # THEN DATA FROM PERSONA: char name, your name, char persona, char greet, scenario, example chat 
-
+                
                 await websocket.send(json.dumps({
                     "fn_index":3,
                     "data":[None,None,update.message.text,None,CharProfile[0],CharProfile[1],CharProfile[2],"Hello",CharProfile[3],None],
                     "session_hash":CharHash
                 }))
                 response = await websocket.recv()
-                print(response)
-                print(type(response))
+
                 if json.loads(response)['msg'] == 'process_starts':
                     
                     response = await websocket.recv()
@@ -577,10 +585,10 @@ async def bio(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
                     print("final: ",response)
                     
                     response = json.loads(response)
-                
-                    AIResponse = response["output"]["data"][3][-1][-1]
-                    AIResponse = re.sub("^[^<\w]+", "", str(AIResponse), count=1)
- 
+                    
+                    AIResponseRaw = response["output"]["data"][3][-1][-1]
+                    regex = r"^[^<]+"
+                    AIResponse = re.sub(regex, "", AIResponseRaw, re.MULTILINE)
                     
     await update.message.reply_text(AIResponse, parse_mode=ParseMode.HTML)
     
@@ -601,8 +609,8 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 async def start_without_shipping_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Sends an invoice without shipping-payment."""
     chat_id = update.message.chat_id
-    title = "Pay for Persona Forge AI - Month Access"
-    description = "Unlimited Usage of Persona Forge AI for 1 Month."
+    title = "Pay for Persona Forge AI - Full Access"
+    description = "Full Access Usage of Persona Forge AI."
     # select a payload just for you to recognize its the donation from your bot
     payload = "Custom-Payload"
     # In order to get a provider_token see https://core.telegram.org/bots/payments#getting-a-token
@@ -633,22 +641,22 @@ async def successful_payment_callback(update: Update, context: ContextTypes.DEFA
     print("AFTER PAYMENT:::", update.message.from_user)
     UserID = update.message.from_user['id']
     document = collection.find_one({"_id": UserID})
-    print("DOCUMENT:::", document)
     if not "PaidDate" in document:
-        print("CHATCOUNT:::", document)
+
         time = datetime.now()
         collection.update_one({"_id": UserID}, {"$set": {"PaidDate": time}}, upsert=True)
 
     """Confirms the successful payment."""
     # do something after successfully receiving payment?
-    await update.message.reply_text("Thank you for your payment!\n\n Limits lifted. You can continue using the AI.")
+    await update.message.reply_text("Thank you for your payment and support! 😍\n\n Limits lifted!")
 
 # === PAYMENTS END ===
 
 def main() -> None:
     """Run the bot."""
     # Create the Application and pass it your bot's token.
-    application = Application.builder().token(BOT_KEY).build()
+    persistence = PicklePersistence(filepath="PersonaForgeBot")
+    application = Application.builder().token(BOT_KEY).persistence(persistence).build()
 
     # Add conversation handler with the states CHARCREATE, CHARNAME, YOUNAME, AIPERSONA and BIO
     conv_handler = ConversationHandler(
@@ -665,12 +673,14 @@ def main() -> None:
             DELETE: [MessageHandler(filters.TEXT & ~filters.COMMAND, delete)]
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        name="conversation_handler",
+        persistent=True,
     )
 
     application.add_handler(conv_handler)
 
     # === PAYMENT HANDLERS ===
-    application.add_handler(CommandHandler("pay", start_without_shipping_callback))
+    application.add_handler(CommandHandler("buy", start_without_shipping_callback))
     application.add_handler(PreCheckoutQueryHandler(precheckout_callback))
     application.add_handler(MessageHandler(filters.SUCCESSFUL_PAYMENT, successful_payment_callback))
 
