@@ -93,7 +93,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     UserID = user['id']
     document = collection.find_one({"_id": UserID})
 
-    if "PaidDate" in document:
+    if document is not None and "PaidDate" in document:
         await update.message.reply_text(
             "<strong>✅ You have Full Access.</strong>\n\n"
             "<strong><u>PersonaForge GTP-6-JB:</u> </strong>\n\nTrained on 6 Billion parameters, 402 Billion data points, 1TB of data, and 383K epochs, this is an extremely robust implementation of the conversational AI model.\n\n"
