@@ -33,7 +33,7 @@ if __version_info__ < (20, 0, 0, "alpha", 5):
         f"visit https://docs.python-telegram-bot.org/en/v{TG_VER}/examples.html"
     )
 from telegram.constants import ParseMode
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, LabeledPrice, InlineKeyboardButton, InlineKeyboardMarkup, ChatActions
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, LabeledPrice, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Updater,
     CallbackContext,
